@@ -27,9 +27,9 @@ func (config *ConfigInfo) Init() {
   ErrorJson
 */
 type ErrorJson struct {
-	State   string            `json:"state"`   // 0: correct, other values means there're something wrong.
-	Message string            `json:"message"` // message: success or error
-	Data    map[string]string `json:"data"`    // if success, contains a dic or array, or null.
+	State   string      `json:"state"`   // 0: correct, other values means there're something wrong.
+	Message string      `json:"message"` // message: success or error
+	Data    interface{} `json:"data"`    // if success, contains a dic or array, or null.
 }
 
 /*
@@ -44,7 +44,8 @@ type CoderModel struct {
 
 // FindCoder find coder models by some condition
 func (coderModel *CoderModel) FindCoder(condition map[string]string) ([]CoderModel, error) {
-	return ([]CoderModel{CoderModel{"Jack", 20, []string{"CN"}, []string{"Oobjective-C"}}}, nil)
+	coderModelList := []CoderModel{CoderModel{"Jack", 20, []string{"CN"}, []string{"Oobjective-C"}}}
+	return coderModelList, nil
 }
 
 /*
@@ -56,10 +57,10 @@ type BaseHandler struct {
 
 // HandleRequest
 func (baseHandler *BaseHandler) HandleRequest(w http.ResponseWriter, req *http.Request) {
-	if Content == nil {
-		Content = ""
-	}
-	fmt.Fprintf(w, Content)
+	// if Content == nil {
+	// 	Content = ""
+	// }
+	fmt.Fprintf(w, baseHandler.Content)
 }
 
 /*
@@ -71,28 +72,37 @@ type CoderHandler struct {
 
 // HandleRequest,when request comes use this method to deal with it
 func (coderHandler *CoderHandler) HandleRequest(w http.ResponseWriter, req *http.Request) {
+	var templateJson ErrorJson
 	coderModelList, modelEerr := new(CoderModel).FindCoder(make(map[string]string))
+
 	if modelEerr != nil {
-		coderHandler.Content = json.Marshal(ErrorJson{State: "1", Message: "DB error", Data: nil})
-	}
+		var errorJson = ErrorJson{"1", "DB error", nil}
+		b, _ := json.Marshal(errorJson)
+		coderHandler.BaseHandler.Content = string(b)
+	} else {
+		templateJson.Data = coderModelList
+		coderJson, jsonErr := json.Marshal(templateJson)
+		if jsonErr != nil {
+			var errorJson = ErrorJson{State: "1", Message: "encode json error", Data: nil}
+			b, _ := json.Marshal(errorJson)
+			coderHandler.Content = string(b)
+		}
 
-	json, jsonErr := json.Marshal()
-	if jsonErr != nil {
-		coderHandler.Content = json.Marshal(ErrorJson{State: "1", Message: "encode json error", Data: nil})
+		coderHandler.BaseHandler.Content = string(coderJson)
+		coderHandler.BaseHandler.HandleRequest(w, req)
 	}
-
-	coderHandler.BaseHandler.HandleRequest(w, req)
 }
 
 func main() {
-	var sampleHandler = new(BaseHandler)
+	// var sampleHandler = new(BaseHandler)
+	var coderHandler = new(CoderHandler)
 
 	mux := http.NewServeMux()
 	// mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 	// 	fmt.Fprintf(w, "Welcome to the home page!")
 	// })
 
-	mux.HandleFunc("/", sampleHandler.HandleRequest)
+	mux.HandleFunc("/", coderHandler.HandleRequest)
 
 	n := negroni.Classic()
 	n.UseHandler(mux)
