@@ -3,30 +3,40 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/codegangsta/negroni"
+	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
 const (
-	DBAddress = "localhost:127071"
+	DBAddress = "localhost"
 )
 
 /*
   ConfigInfo: configurations of this app
 */
 type ConfigInfo struct {
+	Conn *mgo.Session
 }
 
 // Init: initialize configuration
 func (config *ConfigInfo) Init() {
+	conn, err := mgo.Dial("127.0.0.1")
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
 
+	config.Conn = conn
 }
 
 /*
   ErrorJson
 */
-type ErrorJson struct {
+type TemplateJson struct {
 	State   string      `json:"state"`   // 0: correct, other values means there're something wrong.
 	Message string      `json:"message"` // message: success or error
 	Data    interface{} `json:"data"`    // if success, contains a dic or array, or null.
@@ -43,8 +53,22 @@ type CoderModel struct {
 }
 
 // FindCoder find coder models by some condition
-func (coderModel *CoderModel) FindCoder(condition map[string]string) ([]CoderModel, error) {
-	coderModelList := []CoderModel{CoderModel{"Jack", 20, []string{"CN"}, []string{"Oobjective-C"}}}
+func (coderModel *CoderModel) FindCoder(session *mgo.Session, condition map[string]string) ([]CoderModel, error) {
+	if session == nil {
+		panic("DB session is nil")
+	}
+
+	var coderModelList = make([]CoderModel, 20, 20)
+	var collection = session.DB("everywhere").C("user")
+	var iter = collection.Find(bson.M{"name": "Bruce"}).Iter()
+
+	var model CoderModel
+	for iter.Next(&model) {
+		fmt.Printf("Result: %v\n", model.Name)
+		coderModelList = append(coderModelList, model)
+	}
+	// coderModelList := []CoderModel{CoderModel{"Jack", 20, []string{"CN"}, []string{"Oobjective-C"}}}
+	// coderModelList = models
 	return coderModelList, nil
 }
 
@@ -52,7 +76,12 @@ func (coderModel *CoderModel) FindCoder(condition map[string]string) ([]CoderMod
  * SampleHandler: test http handler just
  */
 type BaseHandler struct {
-	Content string // json string to be sent
+	ConfigInfo *ConfigInfo
+	Content    string // json string to be sent
+}
+
+func (baseHandler *BaseHandler) Init(config *ConfigInfo) {
+	baseHandler.ConfigInfo = config
 }
 
 // HandleRequest
@@ -72,18 +101,30 @@ type CoderHandler struct {
 
 // HandleRequest,when request comes use this method to deal with it
 func (coderHandler *CoderHandler) HandleRequest(w http.ResponseWriter, req *http.Request) {
-	var templateJson ErrorJson
-	coderModelList, modelEerr := new(CoderModel).FindCoder(make(map[string]string))
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("[E]", r)
+
+			// error
+			var errorJson = TemplateJson{"500", "Inner error", nil}
+			b, _ := json.Marshal(errorJson)
+			coderHandler.BaseHandler.Content = string(b)
+			coderHandler.BaseHandler.HandleRequest(w, req)
+		}
+	}()
+
+	var templateJson TemplateJson
+	coderModelList, modelEerr := new(CoderModel).FindCoder(coderHandler.ConfigInfo.Conn, make(map[string]string))
 
 	if modelEerr != nil {
-		var errorJson = ErrorJson{"1", "DB error", nil}
+		var errorJson = TemplateJson{"1", "DB error", nil}
 		b, _ := json.Marshal(errorJson)
 		coderHandler.BaseHandler.Content = string(b)
 	} else {
 		templateJson.Data = coderModelList
 		coderJson, jsonErr := json.Marshal(templateJson)
 		if jsonErr != nil {
-			var errorJson = ErrorJson{State: "1", Message: "encode json error", Data: nil}
+			var errorJson = TemplateJson{State: "1", Message: "encode json error", Data: nil}
 			b, _ := json.Marshal(errorJson)
 			coderHandler.Content = string(b)
 		}
@@ -94,8 +135,35 @@ func (coderHandler *CoderHandler) HandleRequest(w http.ResponseWriter, req *http
 }
 
 func main() {
+	fmt.Println("Hello world!")
+	// init db
+	configInfo := ConfigInfo{}
+	configInfo.Init()
+
+	conn, err := mgo.Dial("127.0.0.1")
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	c := conn.DB("everywhere").C("user")
+	err = c.Insert(&CoderModel{"Ale", 123, []string{"EN"}, []string{"C"}},
+		&CoderModel{"Cla", 123, []string{"RU"}, []string{"Objective-C"}})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	result := CoderModel{}
+	err = c.Find(bson.M{"name": "Bruce"}).One(&result)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Hello world!")
+	fmt.Println("Age:", result.Age)
+
 	// var sampleHandler = new(BaseHandler)
 	var coderHandler = new(CoderHandler)
+	coderHandler.Init(&configInfo)
 
 	mux := http.NewServeMux()
 	// mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
