@@ -1,6 +1,7 @@
 package model
 
 import (
+	"everywhere/configs"
 	"fmt"
 
 	"gopkg.in/mgo.v2"
@@ -18,10 +19,10 @@ type CoderModel struct {
 }
 
 // FindCoder find coder models by some condition
-func (coderModel *CoderModel) FindCoder(session *mgo.Session, condition map[string]string) ([]CoderModel, error) {
-	if session == nil {
-		panic("DB session is nil")
-	}
+func (coderModel *CoderModel) FindCoder(condition map[string]string) ([]CoderModel, error) {
+	var session *mgo.Session
+	var err *error
+	config.GetDBSession(session, err)
 
 	var coderModelList = make([]CoderModel, 20, 20)
 	var collection = session.DB("everywhere").C("user")
