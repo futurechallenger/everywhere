@@ -11,67 +11,6 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
-const (
-	DBAddress = "localhost"
-)
-
-/*
-  ConfigInfo: configurations of this app
-*/
-type ConfigInfo struct {
-	Conn *mgo.Session
-}
-
-// Init: initialize configuration
-func (config *ConfigInfo) Init() {
-	conn, err := mgo.Dial("127.0.0.1")
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	config.Conn = conn
-}
-
-/*
-  ErrorJson
-*/
-type TemplateJson struct {
-	State   string      `json:"state"`   // 0: correct, other values means there're something wrong.
-	Message string      `json:"message"` // message: success or error
-	Data    interface{} `json:"data"`    // if success, contains a dic or array, or null.
-}
-
-/*
-  CoderModel
-*/
-type CoderModel struct {
-	Name            string
-	Age             int
-	SpeakLang       []string
-	ProgrammingLang []string
-}
-
-// FindCoder find coder models by some condition
-func (coderModel *CoderModel) FindCoder(session *mgo.Session, condition map[string]string) ([]CoderModel, error) {
-	if session == nil {
-		panic("DB session is nil")
-	}
-
-	var coderModelList = make([]CoderModel, 20, 20)
-	var collection = session.DB("everywhere").C("user")
-	var iter = collection.Find(bson.M{"name": "Bruce"}).Iter()
-
-	var model CoderModel
-	for iter.Next(&model) {
-		fmt.Printf("Result: %v\n", model.Name)
-		coderModelList = append(coderModelList, model)
-	}
-	// coderModelList := []CoderModel{CoderModel{"Jack", 20, []string{"CN"}, []string{"Oobjective-C"}}}
-	// coderModelList = models
-	return coderModelList, nil
-}
-
 /*
  * SampleHandler: test http handler just
  */
